@@ -137,8 +137,6 @@ auditory_plot <- auditory_long|>
     labels = as.character
   ) +
   labs(title = "Auditory Discrimination")
-
-print(auditory_plot)
 ```
 
 ```{r causal_plot}
@@ -193,8 +191,6 @@ detour_plot <- detour_long|>
     labels = as.character
   ) +
   labs(title = "Cylinder: Inhibitory Control")
-
-print(detour_plot)
 ```
 
 ```{r distraction_plot}
@@ -218,11 +214,10 @@ distraction_plot <- distraction_long|>
   ) +
   scale_y_continuous(
     limits = c(0, 1), 
-    breaks = seq(0, 1, by = 0.25)
+    breaks = seq(0, 1, by = 0.25),
+    labels = as.character
   ) +
   labs(title = "Working Memory (Distraction)")
-
-print(distraction_plot)
 ```
 
 ```{r marker_plot}
@@ -249,8 +244,6 @@ marker_plot <- marker_long|>
     labels = as.character
   ) +
   labs(title = "Marker Gesture")
-
-print(marker_plot)
 ```
 
 ```{r momentary_plot}
@@ -277,8 +270,6 @@ momentary_plot <- momentary_long|>
     labels = as.character
   ) +
   labs(title = "Momentary Pointing")
-
-print(momentary_plot)
 ```
 
 ```{r odor_plot}
@@ -305,8 +296,6 @@ odor_plot <- odor_long|>
     labels = as.character
   ) +
   labs(title = "Odor Discrimination")
-
-print(odor_plot)
 ```
 
 ```{r reversal_plot}
@@ -329,11 +318,10 @@ reversal_plot <- reversal_long|>
   ) +
   scale_y_continuous(
     limits = c(0, 1), 
-    breaks = seq(0, 1, by = 0.25)
+    breaks = seq(0, 1, by = 0.25),
+    labels = as.character
   ) +
   labs(title = "Cylinder: Reversal Learning")
-
-print(reversal_plot)
 ```
 
 ```{r unsolvable_plots}
@@ -377,9 +365,6 @@ looktime_plot <- unsolvable_long|>
     breaks = seq(0, 20, by = 5)
   ) +
   labs(title = "Unsolvable (Looking Time)")
-
-print(proplooked_plot)
-print(looktime_plot)
 ```
 
 ```{r workingmem_plot}
@@ -406,8 +391,6 @@ workingmem_plot <- workingmem_long|>
     labels = as.character
   ) +
   labs(title = "Working Memory (Delay)")
-
-print(workingmem_plot)
 ```
 
 #### Figure 2
@@ -750,15 +733,143 @@ When using a probability scale to look at proportion correct by age, cylinder in
 
 ### Data Simulation
 
-```{r}
+```{r intercept&slope_task}
+b     <- fixef(m1)
+tasks <- levels(factor(all_tasks$task))
 
+task_pars <- tibble(task = tasks) |>
+  mutate(
+    intercept = b["(Intercept)"] + coalesce(b[paste0("task", task)], 0),
+    slope     = b["age"]         + coalesce(b[paste0("age:task", task)], 0)
+  )
+print(task_pars)
+```
+
+```{r simulation}
+set.seed(2026)
+
+vc        <- as.data.frame(VarCorr(m1))
+sd_id     <- vc$sdcor[vc$grp == "id"]
+sd_idtask <- vc$sdcor[vc$grp == "id:task"]
+c(sd_id = sd_id, sd_idtask = sd_idtask)
+
+schedules <- all_tasks |> distinct(id, age) |> arrange(id, age)
+real_ids  <- unique(schedules$id) #real testing schedules
+
+simulate_m1 <- function(n_dogs, n_trials = 4) {
+  
+# Each simulated puppy: overall ability + a real puppy's testing ages
+  dogs <- tibble(id       = seq_len(n_dogs),
+                 u_id     = rnorm(n_dogs, 0, sd_id),
+                 template = sample(real_ids, n_dogs, replace = TRUE))
+  
+# Task-specific ability: one value per puppy per task
+  dog_task <- expand_grid(id = seq_len(n_dogs), task = tasks) |>
+    mutate(v_idtask = rnorm(n(), 0, sd_idtask))
+  
+  dogs |>
+    left_join(schedules, by = c("template" = "id"),
+              relationship = "many-to-many") |>
+    cross_join(task_pars) |>
+    left_join(dog_task, by = c("id", "task")) |>
+    mutate(
+      p       = plogis(intercept + slope * age + u_id + v_idtask),
+      total   = n_trials,
+      correct = rbinom(n(), size = total, prob = p)   # 4 Bernoulli trials
+    ) |>
+    transmute(task,
+              id          = factor(id),
+              age,                                  # centered (weeks - 8)
+              `Age (wks)` = age + 8,                # for plotting
+              total, correct,
+              `Proportion Correct` = correct / total)
+}
+
+sim91   <- simulate_m1(91)
+sim1000 <- simulate_m1(1000)
+```
+
+```{r refitted_estimates}
+m1_sim91   <- update(m1, data = sim91)
+m1_sim1000 <- update(m1, data = sim1000)
+
+m1_check <- tibble(term      = names(b),
+                   true      = b,
+                   sim_N91   = fixef(m1_sim91),
+                   sim_N1000 = fixef(m1_sim1000))
+print(m1_check) #yay
+```
+
+```{r side-by-side_graphs, fig.width = 10, fig.height = 9}
+
+  (marker_plot   | workingmem_plot | distraction_plot) /
+  (auditory_plot | odor_plot       | detour_plot)      /
+  (reversal_plot | causal_plot   | momentary_plot)  +
+  plot_annotation(
+    title = "Original Data",
+    theme = theme(
+      plot.title = element_text(size = 20, hjust = 0.5)
+    )
+  )
+
+plot_task <- function(df, title, x_name = "", alpha = 0.2) {
+  df |>
+    ggplot(aes(x = `Age (wks)`, y = `Proportion Correct`)) +
+    geom_jitter(alpha = alpha, width = 0.05, height = 0.05) +
+    geom_smooth(method = "loess", color = "black") +
+    scale_x_continuous(
+      name = x_name,
+      limits = c(8, 20),
+      breaks = seq(8, 20, by = 2)
+    ) +
+    scale_y_continuous(
+      limits = c(0, 1),
+      breaks = seq(0, 1, by = 0.25),
+      labels = as.character
+    ) +
+    labs(title = title)
+}
+
+sim_task <- function(task_name, title, x_name = "") {
+  sim1000 |>
+    filter(task == task_name) |>
+    plot_task(title = title, x_name = x_name, alpha = 0.02)
+}
+
+marker_sim      <- sim_task("Marker gesture",               "Marker Gesture")
+workingmem_sim  <- sim_task("Working memory (Delay)",       "Working Memory (Delay)")
+distraction_sim <- sim_task("Working memory (Distraction)", "Working Memory (Distraction)")
+auditory_sim    <- sim_task("Auditory discrimination",      "Auditory Discrimination")
+odor_sim        <- sim_task("Odor discrimination",          "Odor Discrimination")
+detour_sim      <- sim_task("Cylinder: inhibitory control", "Cylinder: Inhibitory Control")
+reversal_sim    <- sim_task("Cylinder: reversal learning",  "Cylinder: Reversal Learning", "Age (weeks)")
+causal_sim      <- sim_task("Causal reasoning",             "Causal Reasoning",            "Age (weeks)")
+momentary_sim   <- sim_task("Momentary pointing",           "Momentary Pointing",          "Age (weeks)")
+
+  (marker_sim   | workingmem_sim | distraction_sim) /
+  (auditory_sim | odor_sim       | detour_sim)      /
+  (reversal_sim | causal_sim     | momentary_sim)  +
+  plot_annotation(
+    title = "Simulated Data (N = 1000)",
+    theme = theme(
+      plot.title = element_text(size = 20, hjust = 0.5)
+    )
+  )
+```
+
+```{r agextask_simulated}
+
+anova(update(m1_sim91,   . ~ . - age:task), m1_sim91) #sig agextask for n=91
+anova(update(m1_sim1000, . ~ . - age:task), m1_sim1000) #sig agextask for n=1000
 ```
 
 ### Key analysis
 
 The analyses as specified in the analysis plan.
 
-*Side-by-side graph with original graph is ideal here*
+![](images/clipboard-3089209583.png){width="300"}
+
+![](images/clipboard-4081458921.png){width="300"}
 
 ### Exploratory analyses
 
