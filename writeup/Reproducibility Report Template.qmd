@@ -65,15 +65,15 @@ Original paper (as hosted in your repo): https://github.com/samkefer/salomons202
 
 To complete my analyses, participant ID had to be reconstructed by matching the provided summary data to raw and cleaned DCLB datasets, and a few sessions differed slightly between the three sources. Given the large scope of the original study, I needed to greatly limit the breatdth of my analysis for this project. Unlike the original study, my models only include age and experience, ignoring the potential effects of age and rearing strategy. With this narrowing, I will focus primairly on the longitudnial subjects and will thus not reproduce the longitudinal vs control comparisons of Table 3 or the segmented regression of Table 4. Additionally, the majority of my analyses were not included in the original paper, namely the combined age x task model, random slopes, the model including control puppies, and between-task effect sizes. Finally, Salomons et al. used RStudio 2023.06.1 while my project will use 2026.10.0.
 
-## Project Progress Check 1
+## Project Progress Check 2
 
 ### Measure of success
 
-Please describe the outcome measure for the success or failure of your reproduction and how this outcome will be computed.
+My reproduction will be successful if my re-plotted Figure 2 and per-task models match the original. Figure reproducibility will be assessed visually. Per-task models (for the full, 113-dog sample) will be successfully reproduced if they have the same selected model, AIC within 1 unit of reported, and age/experience coefficients within 0.01 of reported, all of which will be reported in a table.
 
 ### Pipeline progress
 
-Earlier in this report, you described the steps necessary to reproduce the key result(s) of this study. Please describe your progress on each of these steps (e.g., data preprocessing, model fitting, model evaluation).
+I have finished all of the coding for my project and just have to work on my writeup!
 
 ## Results
 
